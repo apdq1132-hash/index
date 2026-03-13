@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tower Defense Game</title>
+    <title>Tower Defense - Explosive Edition</title>
     <style>
         body { margin: 0; background: #2c3e50; text-align: center; color: white; font-family: Arial, sans-serif; overflow: hidden; touch-action: manipulation; }
         canvas { background: #27ae60; border: 4px solid #2ecc71; margin-top: 10px; max-width: 95%; height: auto; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
@@ -14,30 +14,24 @@
 <body>
     <div class="ui">الذهب: <span id="gold">120</span> | الصحة: <span id="health">10</span></div>
     <canvas id="gameCanvas" width="600" height="400"></canvas>
-    <div class="instructions">اضغط على الطريق لإنشاء مدافع (التكلفة: 20 ذهب)</div>
+    <div class="instructions">المدافع تطلق قذائف الآن! (التكلفة: 20 ذهب)</div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // الربط بملفاتك التي رفعتها
-        const towerImg = new Image();
-        towerImg.src = 'weapon-cannon.png'; 
+        const towerImg = new Image(); towerImg.src = 'weapon-cannon.png'; 
+        const enemyImg = new Image(); enemyImg.src = 'enemy-ufo-c.png'; 
 
-        const enemyImg = new Image();
-        enemyImg.src = 'enemy-ufo-c.png'; 
-
-        const shootSound = new Audio('shoot.mp3'); 
-        const dieSound = new Audio('die.mp3');
-
-        let gold = 120; // يبدأ بـ 120 ذهب كما طلبت
+        let gold = 120;
         let health = 10;
         const towers = [];
         const enemies = [];
+        const projectiles = []; // قائمة القذائف الجديدة
         const path = [{x: 0, y: 200}, {x: 200, y: 200}, {x: 200, y: 50}, {x: 400, y: 50}, {x: 400, y: 350}, {x: 600, y: 350}];
 
         function spawnEnemy() {
-            if (health > 0) enemies.push({ x: 0, y: 200, hp: 3, pathIndex: 0 });
+            if (health > 0) enemies.push({ x: 0, y: 200, hp: 3, pathIndex: 0, shake: 0 });
         }
         setInterval(spawnEnemy, 2500);
 
@@ -49,7 +43,7 @@
             ctx.moveTo(path[0].x, path[0].y);
             path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
 
-            // تحريك ورسم الأعداء
+            // تحديث ورسم الأعداء
             enemies.forEach((enemy, index) => {
                 let target = path[enemy.pathIndex + 1];
                 if (target) {
@@ -58,41 +52,64 @@
                     enemy.x += dx/dist * 1.5; enemy.y += dy/dist * 1.5;
                     if (dist < 5) enemy.pathIndex++;
                 } else {
-                    enemies.splice(index, 1);
-                    health--;
+                    enemies.splice(index, 1); health--;
                 }
                 
-                // التأكد من رسم العدو (صورة أو مربع أحمر)
-                if (enemyImg.complete && enemyImg.naturalWidth !== 0) {
-                    ctx.drawImage(enemyImg, enemy.x - 20, enemy.y - 20, 40, 40);
+                // رسم العدو مع انميشن بسيط (اهتزاز)
+                let enemySize = 40 + Math.sin(Date.now() / 200) * 2;
+                if (enemyImg.complete) {
+                    ctx.drawImage(enemyImg, enemy.x - enemySize/2, enemy.y - enemySize/2, enemySize, enemySize);
                 } else {
-                    ctx.fillStyle = "red";
-                    ctx.beginPath(); ctx.arc(enemy.x, enemy.y, 15, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = "red"; ctx.beginPath(); ctx.arc(enemy.x, enemy.y, 15, 0, Math.PI*2); ctx.fill();
                 }
             });
 
-            // رسم المدافع
+            // تحديث ورسم المدافع
             towers.forEach(t => {
-                if (towerImg.complete && towerImg.naturalWidth !== 0) {
-                    ctx.drawImage(towerImg, t.x - 25, t.y - 25, 50, 50);
+                // انميشن المدفع (يكبر قليلاً عند الإطلاق)
+                let s = t.recoil > 0 ? 5 : 0;
+                if (towerImg.complete) {
+                    ctx.drawImage(towerImg, t.x - (25+s), t.y - (25+s), 50+(s*2), 50+(s*2));
                 } else {
-                    ctx.fillStyle = "#34495e";
-                    ctx.fillRect(t.x - 20, t.y - 20, 40, 40);
+                    ctx.fillStyle = "#34495e"; ctx.fillRect(t.x - 20, t.y - 20, 40, 40);
                 }
-                
-                enemies.forEach((enemy, eIndex) => {
-                    let dist = Math.sqrt((t.x-enemy.x)**2 + (t.y-enemy.y)**2);
-                    if (dist < 120) {
-                        ctx.strokeStyle = "yellow"; ctx.lineWidth = 2;
-                        ctx.beginPath(); ctx.moveTo(t.x, t.y); ctx.lineTo(enemy.x, enemy.y); ctx.stroke();
-                        enemy.hp -= 0.05;
-                        if (enemy.hp <= 0) { 
-                            enemies.splice(eIndex, 1); 
-                            gold += 10; 
-                            dieSound.play().catch(()=>{});
+                if (t.recoil > 0) t.recoil--;
+
+                // البحث عن عدو لإطلاق القذيفة
+                t.cooldown = t.cooldown || 0;
+                if (t.cooldown <= 0) {
+                    enemies.forEach(enemy => {
+                        let dist = Math.sqrt((t.x-enemy.x)**2 + (t.y-enemy.y)**2);
+                        if (dist < 150) {
+                            projectiles.push({ x: t.x, y: t.y, target: enemy, speed: 5 });
+                            t.cooldown = 40; // سرعة الإطلاق
+                            t.recoil = 5; // تفعيل انميشن الارتداد
                         }
+                    });
+                } else { t.cooldown--; }
+            });
+
+            // تحديث ورسم القذائف (المفجرات)
+            projectiles.forEach((p, pIndex) => {
+                let dx = p.target.x - p.x;
+                let dy = p.target.y - p.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist < 10) { // ملامسة الهدف (انفجار)
+                    p.target.hp -= 1;
+                    if (p.target.hp <= 0) {
+                        let eIdx = enemies.indexOf(p.target);
+                        if (eIdx > -1) { enemies.splice(eIdx, 1); gold += 10; }
                     }
-                });
+                    projectiles.splice(pIndex, 1);
+                } else {
+                    p.x += (dx/dist) * p.speed;
+                    p.y += (dy/dist) * p.speed;
+                    // رسم القذيفة (كرة نار صغيرة)
+                    ctx.fillStyle = "orange";
+                    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle = "red"; ctx.lineWidth = 2; ctx.stroke();
+                }
             });
 
             document.getElementById('gold').innerText = gold;
@@ -101,12 +118,9 @@
             if (health <= 0) {
                 ctx.fillStyle = "rgba(0,0,0,0.8)";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "white"; ctx.font = "40px Arial";
-                ctx.textAlign = "center";
+                ctx.fillStyle = "white"; ctx.font = "40px Arial"; ctx.textAlign = "center";
                 ctx.fillText("Game Over!", 300, 200);
-            } else {
-                requestAnimationFrame(update);
-            }
+            } else { requestAnimationFrame(update); }
         }
 
         canvas.addEventListener('click', function(e) {
@@ -116,10 +130,10 @@
                 const scaleY = canvas.height / rect.height;
                 towers.push({ 
                     x: (e.clientX - rect.left) * scaleX, 
-                    y: (e.clientY - rect.top) * scaleY 
+                    y: (e.clientY - rect.top) * scaleY,
+                    cooldown: 0, recoil: 0
                 });
                 gold -= 20;
-                shootSound.play().catch(()=>{});
             }
         });
 
