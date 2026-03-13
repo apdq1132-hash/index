@@ -20,14 +20,14 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
-        // --- ربط الصور بالأسماء التي رفعتها أنت في GitHub ---
+        // --- ربط الصور بالأسماء الحقيقية التي رفعتها أنت ---
         const towerImg = new Image();
-        towerImg.src = 'weapon-cannon.png'; // اسم صورة المدفع التي رفعتها
+        towerImg.src = 'weapon-cannon.png'; // صورة المدفع التي رفعتها
 
         const enemyImg = new Image();
-        enemyImg.src = 'enemy.png'; // ارفع صورة بهذا الاسم للجنود
+        enemyImg.src = 'enemy-ufo-c.png'; // صورة العدو (UFO) التي رفعتها
 
-        // --- ربط الأصوات ---
+        // --- ربط الأصوات (تأكد من رفع ملفات بهذه الأسماء لاحقاً) ---
         const shootSound = new Audio('shoot.mp3'); 
         const dieSound = new Audio('die.mp3');
 
@@ -50,7 +50,7 @@
             ctx.moveTo(path[0].x, path[0].y);
             path.forEach(p => ctx.lineTo(p.x, p.y)); ctx.stroke();
 
-            // تحريك ورسم الأعداء
+            // تحريك ورسم الأعداء (UFO)
             enemies.forEach((enemy, index) => {
                 let target = path[enemy.pathIndex + 1];
                 if (target) {
@@ -62,12 +62,21 @@
                     enemies.splice(index, 1);
                     health--;
                 }
-                ctx.drawImage(enemyImg, enemy.x - 20, enemy.y - 20, 40, 40);
+                // رسم صورة الـ UFO
+                if (enemyImg.complete) {
+                    ctx.drawImage(enemyImg, enemy.x - 20, enemy.y - 20, 40, 40);
+                } else {
+                    ctx.fillStyle = "red"; ctx.fillRect(enemy.x - 10, enemy.y - 10, 20, 20);
+                }
             });
 
             // رسم المدافع ونظام الإطلاق
             towers.forEach(t => {
-                ctx.drawImage(towerImg, t.x - 25, t.y - 25, 50, 50);
+                if (towerImg.complete) {
+                    ctx.drawImage(towerImg, t.x - 25, t.y - 25, 50, 50);
+                } else {
+                    ctx.fillStyle = "black"; ctx.fillRect(t.x - 15, t.y - 15, 30, 30);
+                }
                 
                 enemies.forEach((enemy, eIndex) => {
                     let dist = Math.sqrt((t.x-enemy.x)**2 + (t.y-enemy.y)**2);
